@@ -13,7 +13,21 @@ Works fully offline. With an `ANTHROPIC_API_KEY`, hints are written by Claude an
 is reviewed by Claude; without one, the helper uses each problem's built-in hint ladder and the
 judge uses a heuristic quality score.
 
+## Contents
+
+- [Run it](#run-it)
+- [Configuration](#configuration)
+- [Project layout](#project-layout)
+- [How it works](#how-it-works)
+- [Adding problems](#adding-problems)
+- [Sandbox and security](#sandbox-and-security)
+- [WebSocket protocol](#websocket-protocol)
+- [Tests](#tests)
+- [Limits of this MVP](#limits-of-this-mvp)
+
 ## Run it
+
+Requires Python 3.12+ (or Docker). No frontend build step.
 
 **Docker (recommended: submitted code runs inside the locked-down container)**
 
@@ -34,7 +48,44 @@ uvicorn app.main:app --reload
 # open http://localhost:8000
 ```
 
-Run the tests from `backend/`: `pip install pytest && python -m pytest -q`
+Pick a problem and a starting level, press **Start session**, and code. `Ctrl/Cmd + Enter`
+runs the examples.
+
+## Configuration
+
+All settings are environment variables (see `.env.example`). Every one is optional.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | empty | Enables Claude-written hints and code review. Empty means offline fallbacks. |
+| `HELPER_MODEL` | `claude-haiku-4-5-20251001` | Model for live hints |
+| `JUDGE_MODEL` | `claude-sonnet-5-5` | Model for the final quality review |
+| `SANDBOX` | `local` | `local` (subprocess with rlimits) or `judge0` |
+| `JUDGE0_URL` | `http://localhost:2358` | Judge0 base URL when `SANDBOX=judge0` |
+| `JUDGE0_TOKEN` | empty | Sent as `X-Auth-Token` if set |
+| `JUDGE0_PYTHON_ID` | `71` | Judge0 language id for Python 3 |
+| `SANDBOX_MEMORY_MB` | `512` | Address-space limit per run |
+| `SANDBOX_MAX_SECONDS` | `20` | Overall time budget per run |
+| `REDIS_URL` | empty | Mirror sessions to Redis. Empty means in-memory only. |
+
+## Project layout
+
+```
+backend/app/
+  main.py       FastAPI app: GET /, /api/health, /api/problems, /api/sessions/{id}, WS /ws
+  engine.py     per-connection session engine; routes events to judge and helper
+  sandbox.py    harness + local and Judge0 runners
+  judge.py      grading, live score, final report
+  helper.py     trigger policy, hint ladder, hint generation
+  session.py    session state, skill estimator, Redis-mirrored store
+  analysis.py   AST checks (syntax, loop depth, structure hash)
+  problems.py   problem bank with visible / hidden / stress tests
+  llm.py        Anthropic wrapper; returns None on failure so callers fall back
+  config.py     environment config
+backend/tests/  pytest suite
+frontend/index.html   single-file UI (Monaco from a CDN, vanilla JS)
+SPEC.md         full build specification and acceptance criteria
+```
 
 ## How it works
 
@@ -69,7 +120,7 @@ Hint rungs: **1 Nudge** (concept or where to look), **2 Approach** (strategy in 
   examples or same error). A new problem resets to rung 1.
 - Proactive hints stop one rung below the band's max; the top rung is only given on request.
 - When visible tests pass with nested loops on an O(n) problem, the helper gives one free
-  warning that large inputs will be tested.
+  warning that the approach will be slow on large inputs.
 - Tune all of this in `POLICY` in `backend/app/helper.py`.
 
 ### Live skill estimate
@@ -120,6 +171,18 @@ Server to client: `session`, `analysis`, `run_status`, `run_result`, `live_score
 
 Sessions are mirrored to Redis (7-day TTL) and readable at `GET /api/sessions/{id}`, which
 includes the full run, hint and skill-estimate history for analysis.
+
+## Tests
+
+```bash
+cd backend
+pip install pytest
+python -m pytest -q
+```
+
+The suite runs fully offline and covers the sandbox (timeouts, load errors, captured output),
+the judge (scoring, process penalties, no hidden inputs in reports), the helper policy for each
+band, the offline hint fallbacks, and the WebSocket flow from start to submit.
 
 ## Limits of this MVP
 

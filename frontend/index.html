@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Livecode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F3F5F7; --panel:#FFFFFF; --ink:#16202B; --ink-2:#4A5765; --ink-3:#7D8995;
+  --line:#D9DEE4; --judge:#2B59C3; --judge-soft:#E7EDFA; --helper:#0B7A6B; --helper-soft:#E3F3F0;
+  --alert:#B4441B; --alert-soft:#FBEDE6; --pass:#1F7A3A; --pass-soft:#E5F3E9;
+  --ui:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --code:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:var(--ui);font-size:14px;line-height:1.5;color:var(--ink);background:var(--paper)}
+button,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--judge);outline-offset:2px}
+code,.mono{font-family:var(--code);font-size:12.5px}
+
+/* top bar */
+.top{height:60px;display:flex;align-items:center;gap:20px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+.mark{font-weight:600;font-size:17px;letter-spacing:-.01em}
+.mark span{color:var(--judge)}
+.setup{display:flex;gap:8px;align-items:center;flex-shrink:0}
+#problemSel{max-width:230px}
+select{height:34px;border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:0 10px}
+.btn{height:34px;padding:0 14px;border-radius:6px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--ink-3)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.judge{background:var(--judge);border-color:var(--judge);color:#fff}
+.btn.helper{color:var(--helper);border-color:#9fd3c9}
+.clock{font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.chip{flex-shrink:0;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:13px;background:var(--helper-soft);color:#0a5a4f;font-weight:500;font-size:13px}
+.chip.flash{animation:flash 1.2s ease-out}
+@keyframes flash{0%{background:#bfe6dd}100%{background:var(--helper-soft)}}
+
+/* score meter: the one bold element */
+.meter{flex:1;min-width:0;display:flex;align-items:center;justify-content:flex-end;gap:14px}
+.meter-total{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em;min-width:58px;text-align:right;white-space:nowrap;flex-shrink:0}
+.meter-total small{font-size:13px;color:var(--ink-3);font-weight:400}
+.bar{display:flex;gap:3px;flex:0 1 440px;min-width:0}
+.seg{position:relative;height:30px;background:var(--judge-soft);border-radius:3px;overflow:hidden}
+.seg i{position:absolute;inset:0 auto 0 0;width:0;overflow:hidden;font-style:normal;background:var(--judge);transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.seg.projected i{background:repeating-linear-gradient(135deg,var(--judge) 0 6px,#5a7fd6 6px 12px)}
+.seg b{position:absolute;left:6px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:500;color:var(--ink);white-space:nowrap}
+.seg i b{color:#fff}   /* white copy of the label, clipped to the filled part */
+
+/* layout */
+.grid{display:grid;grid-template-columns:340px minmax(0,1fr) 340px;height:calc(100% - 60px)}
+.col{min-height:0;display:flex;flex-direction:column}
+.problem{border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:22px 22px 28px}
+.problem h1{font-size:21px;line-height:1.25;margin:0 0 4px;font-weight:600;letter-spacing:-.01em}
+.meta{color:var(--ink-3);font-size:13px;margin-bottom:16px}
+.statement p{margin:0 0 12px;max-width:62ch}
+.statement code{background:var(--paper);padding:1px 5px;border-radius:4px}
+.problem h2{font-size:14px;font-weight:600;margin:22px 0 8px}
+.ex{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:8px;font-family:var(--code);font-size:12.5px;overflow-x:auto}
+.ex .k{color:var(--ink-3)}
+.note{color:var(--ink-3);font-size:13px}
+
+.work{background:var(--paper)}
+#editor{flex:1;min-height:200px;border-bottom:1px solid var(--line)}
+.actions{display:flex;gap:8px;align-items:center;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+.actions .status{margin-left:auto;color:var(--ink-3);font-size:13px}
+.actions .status.err{color:var(--alert)}
+.results{height:230px;overflow:auto;background:var(--panel);padding:12px 14px}
+.empty{color:var(--ink-3);padding:6px 0}
+.test{display:grid;grid-template-columns:72px 1fr auto;gap:10px;align-items:start;padding:7px 0;border-bottom:1px solid var(--paper)}
+.badge{display:inline-block;font-size:12px;font-weight:500;padding:1px 8px;border-radius:10px;text-align:center}
+.b-pass{background:var(--pass-soft);color:var(--pass)}
+.b-fail,.b-error,.b-timeout,.b-not_run{background:var(--alert-soft);color:var(--alert)}
+.test .detail{font-family:var(--code);font-size:12px;color:var(--ink-2);overflow-wrap:anywhere}
+.test .t{color:var(--ink-3);font-size:12px;font-variant-numeric:tabular-nums}
+.console{margin-top:10px;font-family:var(--code);font-size:12px;white-space:pre-wrap;background:var(--paper);border-radius:6px;padding:8px 10px;color:var(--ink-2)}
+.errbox{border-left:3px solid var(--alert);background:var(--alert-soft);padding:8px 12px;font-family:var(--code);font-size:12.5px;color:#7a2d10}
+
+/* helper */
+.helper{border-left:1px solid var(--line);background:var(--panel)}
+.helper header{padding:18px 18px 12px;border-bottom:1px solid var(--line)}
+.helper header h2{font-size:15px;margin:0 0 2px;font-weight:600}
+.mode{font-size:13px;color:var(--ink-3)}
+.feed{flex:1;overflow:auto;padding:14px 18px;display:flex;flex-direction:column;gap:12px}
+.hint{border:1px solid var(--line);border-radius:8px;padding:10px 12px;animation:in .35s ease-out}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.hint .why{font-size:12px;color:var(--ink-3);margin-bottom:6px;display:flex;justify-content:space-between;gap:8px}
+.ladder{display:inline-flex;gap:2px;align-items:flex-end}
+.ladder i{width:4px;background:#cfe6e1;border-radius:1px}
+.ladder i.on{background:var(--helper)}
+.hint .rung{font-weight:600;color:var(--helper);font-size:13px;margin-left:6px}
+.hint .body{white-space:pre-wrap;overflow-wrap:anywhere}
+.hint.you{background:var(--paper);border-color:transparent;align-self:flex-end;max-width:85%}
+.thinking{color:var(--helper);font-size:13px;display:none}
+.thinking.on{display:block}
+.ask{border-top:1px solid var(--line);padding:12px 18px 16px;display:flex;flex-direction:column;gap:8px}
+.ask textarea{resize:none;height:62px;border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+
+/* final report */
+.overlay{position:fixed;inset:0;background:rgba(22,32,43,.38);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+.overlay.on{display:flex}
+.report{background:var(--panel);border-radius:10px;width:min(760px,100%);max-height:90vh;overflow:auto;padding:28px 30px}
+.report .score{display:flex;align-items:baseline;gap:10px}
+.report .score strong{font-size:56px;line-height:1;font-weight:600;letter-spacing:-.03em;color:var(--judge)}
+.report .score span{color:var(--ink-3);font-size:18px}
+.report h3{font-size:14px;margin:22px 0 8px;font-weight:600}
+.rows{display:grid;grid-template-columns:110px 1fr 90px;gap:8px 12px;align-items:center}
+.rowbar{height:8px;background:var(--judge-soft);border-radius:4px;overflow:hidden}
+.rowbar i{display:block;height:100%;background:var(--judge)}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.report ul{margin:0;padding-left:18px}
+.report li{margin-bottom:4px}
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.tier{border:1px solid var(--line);border-radius:6px;padding:10px}
+.tier b{font-size:20px;font-variant-numeric:tabular-nums}
+.tier div{font-size:12.5px;color:var(--ink-2)}
+
+.start-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-3);pointer-events:none}
+
+@media (max-width:1100px){
+  .grid{grid-template-columns:1fr;height:auto}
+  .problem,.helper{border:0;border-bottom:1px solid var(--line)}
+  #editor{height:420px;flex:none}
+  .feed{max-height:360px}
+  .top{height:auto;flex-wrap:wrap;padding:10px 14px}
+  .meter{flex:none;width:100%}
+  .bar{flex:1}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="mark">Live<span>code</span></div>
+  <div class="setup" id="setup">
+    <select id="problemSel" aria-label="Problem"></select>
+    <select id="levelSel" aria-label="Your level">
+      <option value="beginner">Beginner</option>
+      <option value="intermediate" selected>Intermediate</option>
+      <option value="advanced">Advanced</option>
+    </select>
+    <button class="btn primary" id="startBtn">Start session</button>
+  </div>
+  <span class="clock" id="clock" hidden>00:00</span>
+  <span class="chip" id="levelChip" hidden></span>
+  <div class="meter" aria-label="Score">
+    <div class="meter-total"><span id="total">0</span> <small>/100</small></div>
+    <div class="bar" id="bar"></div>
+  </div>
+</div>
+
+<div class="grid">
+  <aside class="col problem" id="problem">
+    <h1>Pick a problem and start</h1>
+    <p class="note">The judge scores you live as you run code. The helper watches how you work and steps in based on your level, which it keeps estimating as you go.</p>
+  </aside>
+
+  <main class="col work">
+    <div id="editor" style="position:relative"><div class="start-hint">Your editor opens when the session starts.</div></div>
+    <div class="actions">
+      <button class="btn primary" id="runBtn" disabled title="Ctrl/Cmd + Enter">Run examples</button>
+      <button class="btn judge" id="submitBtn" disabled>Submit for judging</button>
+      <span class="status" id="status"></span>
+    </div>
+    <div class="results" id="results"><div class="empty">Run your code to see results for each example.</div></div>
+  </main>
+
+  <aside class="col helper">
+    <header>
+      <h2>Helper</h2>
+      <div class="mode" id="mode">Starts when your session does.</div>
+    </header>
+    <div class="feed" id="feed"></div>
+    <div class="ask">
+      <div class="thinking" id="thinking">Helper is writing a hint…</div>
+      <textarea id="askText" placeholder="Optional: tell the helper where you're stuck" disabled></textarea>
+      <button class="btn helper" id="askBtn" disabled>Ask for a hint</button>
+    </div>
+  </aside>
+</div>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+  <div class="report" id="report"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = v => typeof v === "string" ? JSON.stringify(v) : JSON.stringify(v);
+const short = (v, n=140) => { const s = fmt(v); return s && s.length > n ? s.slice(0, n) + "…" : s; };
+
+const SEGMENTS = [["correctness","Correctness",50],["efficiency","Efficiency",15],["quality","Quality",15],["process","Process",20]];
+const RUNG_NAMES = {1:"Nudge",2:"Approach",3:"Outline",4:"Code hint"};
+const LEVEL_TEXT = {beginner:"Beginner", intermediate:"Intermediate", advanced:"Advanced"};
+
+let ws, editor, problem, startedAt = 0, clockTimer, debounce, live = false;
+
+/* ---------- score meter ---------- */
+function buildBar(){
+  $("#bar").innerHTML = SEGMENTS.map(([k,label,w]) =>
+    `<div class="seg" id="seg-${k}" style="flex:${w}"><b>${label}</b><i><b>${label}</b></i></div>`).join("");
+}
+function setSeg(k, value, max, projected){
+  const el = $("#seg-"+k); if (!el) return;
+  const pct = Math.max(0, Math.min(100, (value/max)*100));
+  el.querySelector("i").style.width = pct + "%";
+  el.classList.toggle("projected", !!projected);
+  el.title = `${SEGMENTS.find(s=>s[0]===k)[1]}: ${value} / ${max}` + (projected ? " (projected)" : "");
+}
+function setTotal(n){ $("#total").textContent = Math.round(n * 10) / 10; }
+function resetMeter(){ SEGMENTS.forEach(([k,,w]) => setSeg(k,0,w)); setTotal(0); }
+
+/* ---------- problem panel ---------- */
+function md(text){
+  return text.split(/\n\n+/).map(p => "<p>" + esc(p).replace(/`([^`]+)`/g, "<code>$1</code>") + "</p>").join("");
+}
+function renderProblem(p){
+  const ex = p.examples.map(e => `<div class="ex"><span class="k">${esc(p.function_name)}(</span>${esc(e.args.map(a=>short(a,80)).join(", "))}<span class="k">)</span><br><span class="k">→</span> ${esc(short(e.expected))}</div>`).join("");
+  $("#problem").innerHTML = `
+    <h1>${esc(p.title)}</h1>
+    <div class="meta">${esc(p.difficulty)}, about ${p.expected_minutes} minutes</div>
+    <div class="statement">${md(p.statement)}</div>
+    <h2>Examples</h2>${ex}
+    <p class="note">On submit, the judge also runs ${p.hidden_count} hidden edge cases and ${p.stress_count} large inputs with a time limit.</p>`;
+}
+
+/* ---------- results ---------- */
+function renderResults(m){
+  const box = $("#results");
+  if (m.crashed && !m.tests.length){ box.innerHTML = `<div class="errbox">${esc(m.crashed)}</div>`; return; }
+  if (m.load_error && !m.tests.length){
+    box.innerHTML = `<div class="errbox">${esc(m.load_error.type)}${m.load_error.line ? " on line " + m.load_error.line : ""}: ${esc(m.load_error.message)}</div>`;
+    markError(m.load_error.line); return;
+  }
+  let html = m.crashed ? `<div class="errbox">${esc(m.crashed)}</div>` : "";
+  html += m.load_error ? `<div class="errbox">${esc(m.load_error.type)}${m.load_error.line ? " on line " + m.load_error.line : ""}: ${esc(m.load_error.message)}</div>` : "";
+  html += m.tests.map(t => {
+    let detail;
+    if (t.status === "pass") detail = `${esc(t.note)}`;
+    else if (t.status === "error" && t.error) detail = `${esc(t.error.type)}${t.error.line ? " on line "+t.error.line : ""}: ${esc(t.error.message)}`;
+    else if (t.status === "not_run") detail = "Didn't run because the program stopped early.";
+    else if (t.status === "timeout") detail = `Took too long on input ${esc(short(t.args,80))}`;
+    else detail = `Input ${esc(short(t.args,80))}<br>Expected ${esc(short(t.expected))}, got ${esc(short(t.got))}`;
+    const label = {pass:"Pass",fail:"Fail",error:"Error",timeout:"Timeout",not_run:"Not run"}[t.status] || t.status;
+    return `<div class="test"><span class="badge b-${t.status}">${label}</span><div class="detail">${detail}</div><span class="t">${t.time_ms ? t.time_ms.toFixed(1)+" ms" : ""}</span></div>`;
+  }).join("");
+  if (m.stdout) html += `<div class="console">${esc(m.stdout)}</div>`;
+  box.innerHTML = html;
+  const errLine = (m.tests.find(t => t.error && t.error.line) || {}).error;
+  markError(errLine ? errLine.line : null);
+}
+function markError(line){
+  if (!editor) return;
+  const model = editor.getModel();
+  if (!line){ monaco.editor.setModelMarkers(model, "judge", []); return; }
+  monaco.editor.setModelMarkers(model, "judge", [{startLineNumber:line, endLineNumber:line, startColumn:1, endColumn:model.getLineMaxColumn(line), message:"Error here", severity:monaco.MarkerSeverity.Error}]);
+}
+
+/* ---------- helper feed ---------- */
+function ladder(r){ return `<span class="ladder" aria-hidden="true">${[1,2,3,4].map(i=>`<i class="${i<=r?"on":""}" style="height:${4+i*3}px"></i>`).join("")}</span>`; }
+function addHint(h){
+  const el = document.createElement("div");
+  el.className = "hint";
+  el.innerHTML = `<div class="why"><span>${ladder(h.rung)}<span class="rung">${esc(h.rung_name)}</span></span><span>${esc(h.trigger_label)}</span></div><div class="body">${esc(h.text)}</div>`;
+  $("#feed").appendChild(el); el.scrollIntoView({behavior:"smooth", block:"end"});
+}
+function addYou(text){
+  const el = document.createElement("div"); el.className = "hint you";
+  el.innerHTML = `<div class="body">${esc(text)}</div>`;
+  $("#feed").appendChild(el);
+}
+function setMode(l){
+  const parts = {
+    beginner: `Steps in after about ${l.proactive_idle}s without progress or 2 failed runs. Can go up to code hints when you ask.`,
+    intermediate: `Steps in after about ${l.proactive_idle}s without progress or 3 failed runs. Goes up to outlines.`,
+    advanced: "Mostly stays quiet. Gives nudges and approaches only, mainly when you ask."
+  };
+  $("#mode").textContent = parts[l.band];
+}
+
+/* ---------- socket ---------- */
+function connect(){
+  return new Promise((resolve, reject) => {
+    ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+    ws.onopen = () => resolve();
+    ws.onerror = () => reject();
+    ws.onclose = () => { if (live) status("Connection lost. Refresh to start again.", true); setControls(false); };
+    ws.onmessage = e => onMessage(JSON.parse(e.data));
+  });
+}
+function send(obj){ if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+function status(t, err){ const s = $("#status"); s.textContent = t || ""; s.classList.toggle("err", !!err); }
+function setControls(on){ ["#runBtn","#submitBtn","#askBtn","#askText"].forEach(s => $(s).disabled = !on); }
+function setBusy(on){ $("#runBtn").disabled = $("#submitBtn").disabled = on || !live; }
+
+function onMessage(m){
+  switch (m.type){
+    case "session":
+      problem = m.problem; startedAt = Date.now(); live = true;
+      renderProblem(problem); mountEditor(problem.starter_code);
+      $("#feed").innerHTML = ""; $("#results").innerHTML = `<div class="empty">Run your code to see results for each example.</div>`;
+      resetMeter(); setControls(true); status(""); $("#thinking").classList.remove("on"); markError(null);
+      $("#startBtn").textContent = "New session";
+      $("#clock").hidden = false; clearInterval(clockTimer);
+      clockTimer = setInterval(() => { const s = Math.floor((Date.now()-startedAt)/1000); $("#clock").textContent = String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); }, 1000);
+      break;
+    case "level": {
+      const chip = $("#levelChip"); chip.hidden = false;
+      chip.textContent = `Helper level: ${LEVEL_TEXT[m.band]}`;
+      chip.title = `Live estimate ${Math.round(m.value*100)}/100 (you started as ${LEVEL_TEXT[m.declared]})`;
+      if (m.changed){ chip.classList.remove("flash"); void chip.offsetWidth; chip.classList.add("flash"); }
+      setMode(m); break;
+    }
+    case "analysis":
+      if (m.syntax_error) status(`Line ${m.syntax_error.line}: ${m.syntax_error.message}`, true);
+      else if (!m.has_function && problem) status(`Define ${problem.function_name}() to run the examples.`, true);
+      else status("");
+      break;
+    case "run_status":
+      status(m.state === "judging" ? "Judging all tests…" : "Running examples…"); break;
+    case "run_result":
+      renderResults(m); status(""); setBusy(false); break;
+    case "live_score":
+      setSeg("correctness", m.correctness, 50, true);
+      setSeg("process", m.process, 20, true);
+      setTotal(m.correctness + m.process);
+      break;
+    case "helper_status":
+      $("#thinking").classList.toggle("on", m.state === "thinking");
+      if (m.state === "busy") status("The helper is still writing your last hint.");
+      break;
+    case "hint":
+      $("#thinking").classList.remove("on"); addHint(m); break;
+    case "final_report":
+      live = false; setControls(false); clearInterval(clockTimer); showReport(m.report); break;
+    case "error":
+      status(m.message, true); setBusy(false); break;
+  }
+}
+
+/* ---------- editor ---------- */
+function mountEditor(code){
+  if (editor){ editor.setValue(code); editor.updateOptions({readOnly:false}); editor.focus(); return; }
+  $("#editor").innerHTML = "";
+  editor = monaco.editor.create($("#editor"), {
+    value: code, language: "python", fontFamily: "JetBrains Mono, monospace", fontSize: 14,
+    minimap: {enabled:false}, scrollBeyondLastLine: false, automaticLayout: true,
+    renderLineHighlight: "line", padding: {top: 12}, tabSize: 4
+  });
+  editor.onDidChangeModelContent(() => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => send({type:"code", code: editor.getValue()}), 1200);
+  });
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, run);
+  editor.focus();
+}
+function run(){ if (!live || $("#runBtn").disabled) return; clearTimeout(debounce); setBusy(true); send({type:"run", code: editor.getValue()}); }
+
+/* ---------- report ---------- */
+function showReport(r){
+  if (!r) return;
+  SEGMENTS.forEach(([k,,w]) => setSeg(k, r.breakdown[k], w, false)); setTotal(r.total);
+  editor && editor.updateOptions({readOnly:true});
+  const rows = SEGMENTS.map(([k,label,w]) => `<div>${label}</div><div class="rowbar"><i style="width:${(r.breakdown[k]/w)*100}%"></i></div><div class="mono">${r.breakdown[k]} / ${w}</div>`).join("");
+  const tier = (key, label) => { const t = r.tiers[key]; return `<div class="tier"><b>${t.passed}/${t.total}</b><div>${label}</div></div>`; };
+  const fails = ["hidden","stress"].flatMap(k => r.tiers[k].cases.filter(c => c.status !== "pass").map(c => `<li>${esc(c.note)}: ${esc(c.status === "timeout" ? "too slow" : c.status)}</li>`)).join("");
+  const mins = Math.floor(r.time_seconds/60), secs = r.time_seconds%60;
+  const hints = r.hints_used.length ? r.hints_used.map(h => RUNG_NAMES[h.rung]).join(", ") : "none";
+  $("#report").innerHTML = `
+    <div class="score"><strong id="reportTitle">${r.total}</strong><span>out of 100</span></div>
+    <p>${esc(r.summary)}</p>
+    <h3>Breakdown</h3><div class="rows">${rows}</div>
+    <h3>Tests</h3><div class="tiers">${tier("visible","Examples")}${tier("hidden","Edge cases")}${tier("stress","Large inputs")}</div>
+    ${fails ? `<h3>What failed</h3><ul>${fails}</ul>` : ""}
+    <div class="cols2">
+      <div><h3>Strengths</h3><ul>${(r.strengths||[]).map(s=>`<li>${esc(s)}</li>`).join("") || "<li>None noted</li>"}</ul></div>
+      <div><h3>To improve</h3><ul>${(r.improvements||[]).map(s=>`<li>${esc(s)}</li>`).join("") || "<li>None noted</li>"}</ul></div>
+    </div>
+    <h3>Session</h3>
+    <p class="note">Complexity: ${esc(r.complexity)} (target ${esc(r.optimal_complexity)}). Time: ${mins}m ${secs}s. Runs: ${r.runs}. Hints: ${esc(hints)}. Helper level: started ${LEVEL_TEXT[r.declared_level]}, ended ${LEVEL_TEXT[r.final_level]}.${r.sandbox_error ? " Sandbox note: " + esc(r.sandbox_error) : ""}</p>
+    <div style="display:flex;gap:8px;margin-top:18px"><button class="btn primary" id="againBtn">Start a new session</button><button class="btn" id="closeBtn">Review my code</button></div>`;
+  $("#overlay").classList.add("on");
+  $("#againBtn").onclick = () => { $("#overlay").classList.remove("on"); start(); };
+  $("#closeBtn").onclick = () => $("#overlay").classList.remove("on");
+  $("#againBtn").focus();
+}
+
+/* ---------- wiring ---------- */
+async function start(){
+  status("Loading editor…");
+  await monacoLoaded;
+  status("");
+  try { if (!ws || ws.readyState !== 1) await connect(); }
+  catch { status("Can't reach the server. Is the backend running?", true); return; }
+  send({type:"start", problem_id: $("#problemSel").value, level: $("#levelSel").value});
+}
+$("#startBtn").onclick = start;
+$("#runBtn").onclick = run;
+$("#submitBtn").onclick = () => { if (confirm("Submit for final judging? You won't be able to edit after this.")) { clearTimeout(debounce); setBusy(true); send({type:"submit", code: editor.getValue()}); } };
+$("#askBtn").onclick = () => {
+  const msg = $("#askText").value.trim();
+  if (msg) addYou(msg);
+  $("#askText").value = "";
+  send({type:"help", code: editor.getValue(), message: msg});
+};
+$("#askText").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); $("#askBtn").click(); } });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") $("#overlay").classList.remove("on");
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); run(); }   // works outside the editor too
+});
+
+buildBar();
+fetch("/api/problems").then(r => r.json()).then(ps => {
+  $("#problemSel").innerHTML = ps.map(p => `<option value="${esc(p.id)}">${esc(p.title)} (${esc(p.difficulty)})</option>`).join("");
+});
+require.config({ paths: { vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs" }});
+const monacoLoaded = new Promise(res => require(["vs/editor/editor.main"], res));
+</script>
+</body>
+</html>
