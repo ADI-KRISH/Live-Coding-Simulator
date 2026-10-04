@@ -114,6 +114,10 @@ def test_one_idle_hint_per_quiet_spell_and_cooldown():
     s.last_activity = time.time() - 300
     s.hints.append(hint(1, "idle", age=100))          # past the 30s cooldown, same quiet spell
     assert helper.decide(s, "idle") is None
+    s.hints = [hint(1, "request", age=35)]             # cooldown is over, but the hint is fresh
+    assert helper.decide(s, "idle") is None
+    s.hints = [hint(1, "request", age=50)]
+    assert helper.decide(s, "idle").rung == 2          # still stuck 45s after the hint: go deeper
     s.hints = [hint(1, "request", sig="fail:v2,v3", age=5)]
     s.runs = [fail_run(), fail_run()]
     assert helper.decide(s, "fail_streak") is None    # cooling down
@@ -246,3 +250,32 @@ def test_error_streak_hint_arrives_after_two_runs_for_a_beginner():
         assert "hint" not in [m["type"] for m in seen]
         ws.send_json({"type": "run", "code": RAISES})
         assert until(ws, "hint")[0]["trigger"] == "error_streak"
+
+
+# ------------------------------------------------------------------ LLM provider
+
+def test_openrouter_provider_is_used_and_failures_fall_back(monkeypatch):
+    import httpx
+
+    from app.llm import llm
+
+    seen = {}
+
+    def handler(request):
+        seen.update(json.loads(request.content))
+        if seen["model"] == "broken":
+            return httpx.Response(429, json={"error": "rate limited"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": " Look at line 3. "}}]})
+
+    async def go():
+        monkeypatch.setattr(llm, "client", httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        monkeypatch.setattr(llm, "provider", "openrouter")
+        s = Session("two-sum", "beginner")
+        hint_text = await helper.generate(s, P, helper.HintDecision("request", 1), WRONG, None, None)
+        monkeypatch.setattr("app.config.HELPER_MODEL", "broken")
+        fallback = await helper.generate(s, P, helper.HintDecision("request", 1), WRONG, None, None)
+        return hint_text, fallback
+
+    hint_text, fallback = run(go())
+    assert hint_text == "Look at line 3." and fallback == P.hints[0]
+    assert [m["role"] for m in seen["messages"]] == ["system", "user"]

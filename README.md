@@ -9,7 +9,7 @@ streamed over a WebSocket, and two agents react to what they do:
   slow approach) and steps in with hints sized to the coder's level. That level is
   re-estimated live from how they work, so the helper backs off or leans in as the session goes.
 
-Works fully offline. With an `ANTHROPIC_API_KEY`, hints are written by Claude and code quality
+Works fully offline. With an `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY`, hints are written by the model and code quality
 is reviewed by Claude; without one, the helper uses each problem's built-in hint ladder and the
 judge uses a heuristic quality score.
 
@@ -32,7 +32,7 @@ Requires Python 3.12+ (or Docker). No frontend build step.
 **Docker (recommended: submitted code runs inside the locked-down container)**
 
 ```bash
-cp .env.example .env          # optionally add ANTHROPIC_API_KEY
+cp .env.example .env          # optionally add OPENROUTER_API_KEY or ANTHROPIC_API_KEY
 docker compose up --build
 # open http://localhost:8000
 ```
@@ -43,7 +43,7 @@ docker compose up --build
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=...  # optional
+cp ../.env.example ../.env    # optional: add a key; .env is read at startup
 uvicorn app.main:app --reload
 # open http://localhost:8000
 ```
@@ -57,9 +57,12 @@ All settings are environment variables (see `.env.example`). Every one is option
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | empty | Enables Claude-written hints and code review. Empty means offline fallbacks. |
-| `HELPER_MODEL` | `claude-haiku-4-5-20251001` | Model for live hints |
-| `JUDGE_MODEL` | `claude-sonnet-5-5` | Model for the final quality review |
+| `OPENROUTER_API_KEY` | empty | Enables model-written hints and code review through OpenRouter |
+| `ANTHROPIC_API_KEY` | empty | Same, through the Anthropic API. With neither key the app uses offline fallbacks. |
+| `LLM_PROVIDER` | from the key set | `openrouter` or `anthropic`; OpenRouter wins if both keys are set |
+| `OPENROUTER_REASONING` | `0` | `1` lets the model reason before answering (slower hints) |
+| `HELPER_MODEL` | `nvidia/nemotron-3.5-lightning:free` (OpenRouter), `claude-haiku-4-5-20251001` (Anthropic) | Model for live hints |
+| `JUDGE_MODEL` | `nvidia/nemotron-3.5-lightning:free` (OpenRouter), `claude-sonnet-5-5` (Anthropic) | Model for the final quality review |
 | `SANDBOX` | `local` | `local` (subprocess with rlimits) or `judge0` |
 | `JUDGE0_URL` | `http://localhost:2358` | Judge0 base URL when `SANDBOX=judge0` |
 | `JUDGE0_TOKEN` | empty | Sent as `X-Auth-Token` if set |

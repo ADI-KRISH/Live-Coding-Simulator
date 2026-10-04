@@ -82,7 +82,9 @@ def decide(session: Session, trigger: str, analysis_flags: dict | None = None) -
     proactive_cap = max(1, p["max_rung"] - 1)   # the top rung is only given on request
 
     if trigger == "idle":
-        if p["idle"] is None or now - session.last_activity < p["idle"]:
+        # a hint restarts the quiet timer: give the coder time to act on it before nudging again
+        quiet_since = max(session.last_activity, last.at if last else 0)
+        if p["idle"] is None or now - quiet_since < p["idle"]:
             return None
         if last and last.trigger == "idle" and last.at > session.last_activity:
             return None                          # already nudged during this quiet spell

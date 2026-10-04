@@ -21,7 +21,7 @@ backend/app/
   session.py    Session state, skill estimator, Redis-mirrored store
   analysis.py   AST checks (syntax, loop depth, structure hash)
   problems.py   problem bank with visible/hidden/stress tests
-  llm.py        Anthropic wrapper; returns None on failure so callers fall back
+  llm.py        OpenRouter/Anthropic wrapper; returns None on failure so callers fall back
   config.py     env config
 backend/tests/  pytest suite
 frontend/index.html
@@ -36,7 +36,7 @@ frontend/index.html
 1. Expected outputs never enter the sandbox. The harness returns raw function output; `judge.grade()` compares in the backend.
 2. The judge never sees hint text. It may only use hint count and rung for the process score.
 3. The helper never writes a complete solution and never mentions hidden or stress tests.
-4. Every LLM call has a non-LLM fallback. The app must work with no `ANTHROPIC_API_KEY`.
+4. Every LLM call has a non-LLM fallback. The app must work with no API key (`OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY`).
 5. Hint generation runs as a background task outside the engine lock; runs and submits must never wait on an LLM hint.
 6. Activity for idle detection = AST structure change, not keystrokes.
 7. Don't add a frontend build step or framework. Keep `index.html` self-contained.

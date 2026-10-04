@@ -7,13 +7,31 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+(() => {
+  let t = null;
+  try { t = localStorage.getItem("theme"); } catch {}
+  document.documentElement.dataset.theme = t || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+})();
+</script>
 <style>
 :root{
   --paper:#F3F5F7; --panel:#FFFFFF; --ink:#16202B; --ink-2:#4A5765; --ink-3:#7D8995;
   --line:#D9DEE4; --judge:#2B59C3; --judge-soft:#E7EDFA; --helper:#0B7A6B; --helper-soft:#E3F3F0;
   --alert:#B4441B; --alert-soft:#FBEDE6; --pass:#1F7A3A; --pass-soft:#E5F3E9;
+  --fill:#2B59C3; --stripe:#5A7FD6; --btn-bg:#16202B; --btn-fg:#FFFFFF; --chip-fg:#0A5A4F; --flash:#BFE6DD;
+  --helper-line:#9FD3C9; --ladder-off:#CFE6E1; --err-fg:#7A2D10; --scrim:rgba(22,32,43,.38);
   --ui:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --code:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --paper:#0F151B; --panel:#17202A; --ink:#E6EBF0; --ink-2:#AEB9C4; --ink-3:#7F8C99;
+  --line:#2A3642; --judge:#7FA2F5; --judge-soft:#1E2B47; --helper:#3DBFAB; --helper-soft:#12332E;
+  --alert:#F08A5D; --alert-soft:#3A2018; --pass:#5CC47C; --pass-soft:#15301F;
+  --fill:#3F6BD8; --stripe:#5A82E6; --btn-bg:#E6EBF0; --btn-fg:#0F151B; --chip-fg:#8FE0D2; --flash:#1F5A50;
+  --helper-line:#2C6F64; --ladder-off:#24443F; --err-fg:#F6B79C; --scrim:rgba(0,0,0,.6);
+  color-scheme:dark;
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -32,13 +50,14 @@ select{height:34px;border:1px solid var(--line);border-radius:6px;background:var
 .btn{height:34px;padding:0 14px;border-radius:6px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-weight:500;white-space:nowrap}
 .btn:hover{border-color:var(--ink-3)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
-.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
-.btn.judge{background:var(--judge);border-color:var(--judge);color:#fff}
-.btn.helper{color:var(--helper);border-color:#9fd3c9}
+.btn.primary{background:var(--btn-bg);border-color:var(--btn-bg);color:var(--btn-fg)}
+.btn.judge{background:var(--fill);border-color:var(--fill);color:#fff}
+.btn.icon{width:34px;padding:0;flex-shrink:0;font-size:16px;line-height:1}
+.btn.helper{color:var(--helper);border-color:var(--helper-line)}
 .clock{font-variant-numeric:tabular-nums;color:var(--ink-2)}
-.chip{flex-shrink:0;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:13px;background:var(--helper-soft);color:#0a5a4f;font-weight:500;font-size:13px}
+.chip{flex-shrink:0;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:13px;background:var(--helper-soft);color:var(--chip-fg);font-weight:500;font-size:13px}
 .chip.flash{animation:flash 1.2s ease-out}
-@keyframes flash{0%{background:#bfe6dd}100%{background:var(--helper-soft)}}
+@keyframes flash{0%{background:var(--flash)}100%{background:var(--helper-soft)}}
 
 /* score meter: the one bold element */
 .meter{flex:1;min-width:0;display:flex;align-items:center;justify-content:flex-end;gap:14px}
@@ -46,8 +65,8 @@ select{height:34px;border:1px solid var(--line);border-radius:6px;background:var
 .meter-total small{font-size:13px;color:var(--ink-3);font-weight:400}
 .bar{display:flex;gap:3px;flex:0 1 440px;min-width:0}
 .seg{position:relative;height:30px;background:var(--judge-soft);border-radius:3px;overflow:hidden}
-.seg i{position:absolute;inset:0 auto 0 0;width:0;overflow:hidden;font-style:normal;background:var(--judge);transition:width .6s cubic-bezier(.2,.8,.2,1)}
-.seg.projected i{background:repeating-linear-gradient(135deg,var(--judge) 0 6px,#5a7fd6 6px 12px)}
+.seg i{position:absolute;inset:0 auto 0 0;width:0;overflow:hidden;font-style:normal;background:var(--fill);transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.seg.projected i{background:repeating-linear-gradient(135deg,var(--fill) 0 6px,var(--stripe) 6px 12px)}
 .seg b{position:absolute;left:6px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:500;color:var(--ink);white-space:nowrap}
 .seg i b{color:#fff}   /* white copy of the label, clipped to the filled part */
 
@@ -78,7 +97,7 @@ select{height:34px;border:1px solid var(--line);border-radius:6px;background:var
 .test .detail{font-family:var(--code);font-size:12px;color:var(--ink-2);overflow-wrap:anywhere}
 .test .t{color:var(--ink-3);font-size:12px;font-variant-numeric:tabular-nums}
 .console{margin-top:10px;font-family:var(--code);font-size:12px;white-space:pre-wrap;background:var(--paper);border-radius:6px;padding:8px 10px;color:var(--ink-2)}
-.errbox{border-left:3px solid var(--alert);background:var(--alert-soft);padding:8px 12px;font-family:var(--code);font-size:12.5px;color:#7a2d10}
+.errbox{border-left:3px solid var(--alert);background:var(--alert-soft);padding:8px 12px;font-family:var(--code);font-size:12.5px;color:var(--err-fg)}
 
 /* helper */
 .helper{border-left:1px solid var(--line);background:var(--panel)}
@@ -90,7 +109,7 @@ select{height:34px;border:1px solid var(--line);border-radius:6px;background:var
 @keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .hint .why{font-size:12px;color:var(--ink-3);margin-bottom:6px;display:flex;justify-content:space-between;gap:8px}
 .ladder{display:inline-flex;gap:2px;align-items:flex-end}
-.ladder i{width:4px;background:#cfe6e1;border-radius:1px}
+.ladder i{width:4px;background:var(--ladder-off);border-radius:1px}
 .ladder i.on{background:var(--helper)}
 .hint .rung{font-weight:600;color:var(--helper);font-size:13px;margin-left:6px}
 .hint .body{white-space:pre-wrap;overflow-wrap:anywhere}
@@ -98,10 +117,10 @@ select{height:34px;border:1px solid var(--line);border-radius:6px;background:var
 .thinking{color:var(--helper);font-size:13px;display:none}
 .thinking.on{display:block}
 .ask{border-top:1px solid var(--line);padding:12px 18px 16px;display:flex;flex-direction:column;gap:8px}
-.ask textarea{resize:none;height:62px;border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.ask textarea{resize:none;height:62px;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--panel)}
 
 /* final report */
-.overlay{position:fixed;inset:0;background:rgba(22,32,43,.38);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+.overlay{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
 .overlay.on{display:flex}
 .report{background:var(--panel);border-radius:10px;width:min(760px,100%);max-height:90vh;overflow:auto;padding:28px 30px}
 .report .score{display:flex;align-items:baseline;gap:10px}
@@ -110,7 +129,7 @@ select{height:34px;border:1px solid var(--line);border-radius:6px;background:var
 .report h3{font-size:14px;margin:22px 0 8px;font-weight:600}
 .rows{display:grid;grid-template-columns:110px 1fr 90px;gap:8px 12px;align-items:center}
 .rowbar{height:8px;background:var(--judge-soft);border-radius:4px;overflow:hidden}
-.rowbar i{display:block;height:100%;background:var(--judge)}
+.rowbar i{display:block;height:100%;background:var(--fill)}
 .cols2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 .report ul{margin:0;padding-left:18px}
 .report li{margin-bottom:4px}
@@ -147,6 +166,7 @@ select{height:34px;border:1px solid var(--line);border-radius:6px;background:var
   </div>
   <span class="clock" id="clock" hidden>00:00</span>
   <span class="chip" id="levelChip" hidden></span>
+  <button class="btn icon" id="themeBtn" type="button"></button>
   <div class="meter" aria-label="Score">
     <div class="meter-total"><span id="total">0</span> <small>/100</small></div>
     <div class="bar" id="bar"></div>
@@ -199,6 +219,18 @@ const RUNG_NAMES = {1:"Nudge",2:"Approach",3:"Outline",4:"Code hint"};
 const LEVEL_TEXT = {beginner:"Beginner", intermediate:"Intermediate", advanced:"Advanced"};
 
 let ws, editor, problem, startedAt = 0, clockTimer, debounce, live = false;
+
+/* ---------- theme ---------- */
+function applyTheme(t){
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("theme", t); } catch {}
+  const next = t === "dark" ? "light" : "dark";
+  $("#themeBtn").textContent = t === "dark" ? "☀" : "☾";
+  $("#themeBtn").title = `Switch to ${next} mode`;
+  $("#themeBtn").setAttribute("aria-label", `Switch to ${next} mode`);
+  if (window.monaco) monaco.editor.setTheme(t === "dark" ? "vs-dark" : "vs");
+}
+const isDark = () => document.documentElement.dataset.theme === "dark";
 
 /* ---------- score meter ---------- */
 function buildBar(){
@@ -348,7 +380,7 @@ function mountEditor(code){
   if (editor){ editor.setValue(code); editor.updateOptions({readOnly:false}); editor.focus(); return; }
   $("#editor").innerHTML = "";
   editor = monaco.editor.create($("#editor"), {
-    value: code, language: "python", fontFamily: "JetBrains Mono, monospace", fontSize: 14,
+    value: code, language: "python", theme: isDark() ? "vs-dark" : "vs", fontFamily: "JetBrains Mono, monospace", fontSize: 14,
     minimap: {enabled:false}, scrollBeyondLastLine: false, automaticLayout: true,
     renderLineHighlight: "line", padding: {top: 12}, tabSize: 4
   });
@@ -414,6 +446,8 @@ document.addEventListener("keydown", e => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); run(); }   // works outside the editor too
 });
 
+$("#themeBtn").onclick = () => applyTheme(isDark() ? "light" : "dark");
+applyTheme(isDark() ? "dark" : "light");
 buildBar();
 fetch("/api/problems").then(r => r.json()).then(ps => {
   $("#problemSel").innerHTML = ps.map(p => `<option value="${esc(p.id)}">${esc(p.title)} (${esc(p.difficulty)})</option>`).join("");

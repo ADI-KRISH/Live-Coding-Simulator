@@ -78,7 +78,7 @@ Rules:
 - Explicit requests ignore cooldown and escalate one rung each time on the same stuck signature, capped at max rung.
 - Proactive hints are capped at max_rung − 1 (min 1) and escalate only if still stuck after "escalate after".
 - Stuck signature = last run's state: `err:<Type>:<line>`, `fail:<ids>`, `pass`, or `no-run`. New signature resets to rung 1.
-- Only one idle hint per quiet spell.
+- Only one idle hint per quiet spell. Any hint restarts the idle timer, so an idle hint never lands right after another hint.
 - Inefficiency: when all visible pass, loop depth ≥2 and optimal is O(n)/O(n log n), give one free rung-1 warning (bypasses cooldown, no process penalty).
 - Only one hint in flight; a second request while generating returns `helper_status: busy`.
 

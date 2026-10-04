@@ -123,7 +123,7 @@ def _heuristic_quality(a: CodeAnalysis) -> dict:
         "strengths": ["Solution runs end to end."] if not a.is_stub else [],
         "improvements": (["Reduce nested loops; there is likely a single-pass approach."] if a.max_loop_depth >= 2 else [])
         + (["Use descriptive variable names."] if a.short_names > 2 else []),
-        "summary": "Scored with the offline heuristic (no API key configured).",
+        "summary": "Scored with the offline heuristic (no model review was available).",
         "source": "heuristic",
     }
 

@@ -29,7 +29,7 @@ async def index():
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "llm": llm.enabled, "sandbox": config.SANDBOX,
+    return {"ok": True, "llm": llm.enabled, "provider": llm.provider if llm.enabled else None, "sandbox": config.SANDBOX,
             "helper_model": config.HELPER_MODEL, "judge_model": config.JUDGE_MODEL}
 
 
