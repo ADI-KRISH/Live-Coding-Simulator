@@ -41,11 +41,11 @@ button,select,textarea{font:inherit;color:inherit}
 code,.mono{font-family:var(--code);font-size:12.5px}
 
 /* top bar */
-.top{height:60px;display:flex;align-items:center;gap:20px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+.top{height:60px;display:flex;align-items:center;gap:14px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line)}
 .mark{font-weight:600;font-size:17px;letter-spacing:-.01em}
 .mark span{color:var(--judge)}
 .setup{display:flex;gap:8px;align-items:center;flex-shrink:0}
-#problemSel{max-width:230px}
+#problemSel{max-width:190px}
 select{height:34px;border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:0 10px}
 .btn{height:34px;padding:0 14px;border-radius:6px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-weight:500;white-space:nowrap}
 .btn:hover{border-color:var(--ink-3)}
@@ -138,6 +138,45 @@ select{height:34px;border:1px solid var(--line);border-radius:6px;background:var
 .tier b{font-size:20px;font-variant-numeric:tabular-nums}
 .tier div{font-size:12.5px;color:var(--ink-2)}
 
+/* skill graph + recommendations */
+.radar{display:block;width:100%;max-width:340px;aspect-ratio:340/250;flex-shrink:0;margin:0 auto}
+.radar .ring{fill:none;stroke:var(--line)}
+.radar .spoke{stroke:var(--line)}
+.radar .now{fill:var(--judge);fill-opacity:.16;stroke:var(--judge);stroke-width:2;stroke-linejoin:round}
+.radar .was{fill:none;stroke:var(--ink-3);stroke-width:1.5;stroke-dasharray:4 3}
+.radar .dot{fill:var(--judge);stroke:var(--panel);stroke-width:2}
+.radar .dot.new{fill:var(--panel);stroke:var(--judge)}
+.radar .hit{fill:transparent}
+.radar text{font-family:var(--ui);font-size:11px;fill:var(--ink-2)}
+.radar .band{font-size:9px;fill:var(--ink-3)}
+.legend{display:flex;gap:14px;justify-content:center;font-size:12px;color:var(--ink-2);margin:2px 0 8px}
+.legend i{display:inline-block;width:18px;margin-right:5px;vertical-align:middle;border-top:2px solid var(--judge)}
+.legend i.was{border-top:2px dashed var(--ink-3)}
+.topics{list-style:none;margin:6px 0 0;padding:0;display:grid;grid-template-columns:1fr auto auto;gap:3px 10px;font-size:13px}
+.topics li{display:contents}
+.topics .v{font-variant-numeric:tabular-nums;text-align:right}
+.topics .b{color:var(--ink-3)}
+.topics .up{color:var(--pass)} .topics .down{color:var(--alert)}
+.rec{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:8px 10px;margin-bottom:8px;cursor:pointer}
+.rec:hover{border-color:var(--judge)}
+.rec b{font-weight:600}
+.rec span{display:block;font-size:12.5px;color:var(--ink-2)}
+.rec .lv{color:var(--ink-3)}
+
+/* step-through */
+.tr-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.tr-head select,.tr-head .btn{height:28px}
+.tr-head input[type=range]{flex:1;min-width:120px;accent-color:var(--judge)}
+.tr-pos{font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.vars{width:100%;border-collapse:collapse;font-family:var(--code);font-size:12.5px}
+.vars td{padding:3px 8px;border-bottom:1px solid var(--paper);vertical-align:top;overflow-wrap:anywhere}
+.vars td:first-child{color:var(--judge);white-space:nowrap;width:1%}
+.vars tr.changed td{background:var(--judge-soft)}
+.tr-note{font-size:12.5px;color:var(--ink-2);margin-top:8px}
+.tr-line{background:var(--judge-soft)}
+.tr-glyph{border-left:3px solid var(--judge)}
+.growth{font-family:var(--code);font-size:12px;color:var(--ink-2);display:grid;grid-template-columns:repeat(4,1fr);gap:2px 12px;margin-top:6px}
+
 .start-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-3);pointer-events:none}
 
 @media (max-width:1100px){
@@ -166,6 +205,7 @@ select{height:34px;border:1px solid var(--line);border-radius:6px;background:var
   </div>
   <span class="clock" id="clock" hidden>00:00</span>
   <span class="chip" id="levelChip" hidden></span>
+  <button class="btn" id="skillsBtn" type="button" title="Your skill graph and recommended problems">Skills</button>
   <button class="btn icon" id="themeBtn" type="button"></button>
   <div class="meter" aria-label="Score">
     <div class="meter-total"><span id="total">0</span> <small>/100</small></div>
@@ -183,6 +223,7 @@ select{height:34px;border:1px solid var(--line);border-radius:6px;background:var
     <div id="editor" style="position:relative"><div class="start-hint">Your editor opens when the session starts.</div></div>
     <div class="actions">
       <button class="btn primary" id="runBtn" disabled title="Ctrl/Cmd + Enter">Run examples</button>
+      <button class="btn" id="traceBtn" disabled title="Run one example line by line and watch the variables change">Step through</button>
       <button class="btn judge" id="submitBtn" disabled>Submit for judging</button>
       <span class="status" id="status"></span>
     </div>
@@ -219,6 +260,81 @@ const RUNG_NAMES = {1:"Nudge",2:"Approach",3:"Outline",4:"Code hint"};
 const LEVEL_TEXT = {beginner:"Beginner", intermediate:"Intermediate", advanced:"Advanced"};
 
 let ws, editor, problem, startedAt = 0, clockTimer, debounce, live = false;
+let skillView = null, trace = null, traceDeco = [];
+
+/* ---------- skill profile (kept in this browser) ---------- */
+let profile = {skills:{}, solved:[]};
+try { profile = JSON.parse(localStorage.getItem("lcs-profile")) || profile; } catch {}
+function saveProfile(p){ profile = p; try { localStorage.setItem("lcs-profile", JSON.stringify(p)); } catch {} }
+async function loadSkills(){
+  try {
+    const r = await fetch("/api/profile", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({profile, level: $("#levelSel").value})});
+    skillView = await r.json();
+  } catch { skillView = null; }
+  if (!problem) renderLobby();
+}
+
+// Radar of skill per topic. Rings sit on the band boundaries (40 and 70), so the shape reads as levels.
+function radar(topics, before){
+  const N = topics.length, cx = 170, cy = 122, R = 72;
+  const at = (i, v) => { const a = -Math.PI/2 + i*2*Math.PI/N; return [cx + Math.cos(a)*R*v, cy + Math.sin(a)*R*v]; };
+  const poly = vals => vals.map((v,i) => at(i,v).map(n => n.toFixed(1)).join(",")).join(" ");
+  const rings = [0.4, 0.7, 1].map(v => `<polygon class="ring" points="${poly(topics.map(() => v))}"/>`).join("");
+  const spokes = topics.map((_,i) => { const [x,y] = at(i,1); return `<line class="spoke" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`; }).join("");
+  const labels = topics.map((t,i) => {
+    const [x,y] = at(i,1.17), a = -Math.PI/2 + i*2*Math.PI/N, c = Math.cos(a), s = Math.sin(a);
+    const cut = t.label.lastIndexOf(" "), lines = cut > 0 ? [t.label.slice(0,cut), t.label.slice(cut+1)] : [t.label];
+    const y0 = y + 4 - (lines.length - 1) * (s < -0.3 ? 12 : s > 0.3 ? 0 : 6);
+    return `<text x="${x.toFixed(1)}" y="${y0.toFixed(1)}" text-anchor="${c > 0.2 ? "start" : c < -0.2 ? "end" : "middle"}">${lines.map((l,j) => `<tspan x="${x.toFixed(1)}" dy="${j ? 12 : 0}">${esc(l)}</tspan>`).join("")}</text>`;
+  }).join("");
+  const dots = topics.map((t,i) => { const [x,y] = at(i,t.value); const tip = `${t.label}: ${Math.round(t.value*100)}/100, ${LEVEL_TEXT[t.band]}${t.practised ? "" : " (not practised yet)"}`;
+    return `<circle class="dot ${t.practised ? "" : "new"}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4"/><circle class="hit" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="12"><title>${esc(tip)}</title></circle>`; }).join("");
+  const was = before ? `<polygon class="was" points="${poly(topics.map(t => before[t.id] ?? t.value))}"/>` : "";
+  const bands = [[0.4,"40"],[0.7,"70"],[1,"100"]].map(([v,l]) => `<text class="band" x="${cx+3}" y="${(cy - R*v + 9).toFixed(1)}">${l}</text>`).join("");
+  return `<svg class="radar" viewBox="0 0 340 250" role="img" aria-label="Skill graph: skill out of 100 for each topic. The same numbers are listed below.">${rings}${spokes}${bands}${was}<polygon class="now" points="${poly(topics.map(t => t.value))}"/>${dots}${labels}</svg>`
+    + (before ? `<div class="legend"><span><i></i>Now</span><span><i class="was"></i>Before this session</span></div>` : "");
+}
+function topicList(topics, changes){
+  return `<ul class="topics">` + topics.map(t => {
+    const c = changes && changes[t.id], d = c ? Math.round(c.after*100) - Math.round(c.before*100) : 0;
+    const delta = d ? ` <span class="${d > 0 ? "up" : "down"}">${d > 0 ? "▲ +" : "▼ "}${d}</span>` : "";
+    return `<li><span>${esc(t.label)}</span><span class="v">${Math.round(t.value*100)}${delta}</span><span class="b">${t.practised ? LEVEL_TEXT[t.band] : "Not practised"}</span></li>`;
+  }).join("") + `</ul>`;
+}
+function recList(recs){
+  return recs.map(r => `<button class="rec" type="button" data-id="${esc(r.id)}"><b>${esc(r.title)}</b> <span class="lv">${LEVEL_TEXT[r.difficulty]}</span><span>${esc(r.reason)}</span></button>`).join("");
+}
+function skillsHTML(view, changes){
+  const before = changes ? Object.fromEntries(Object.entries(changes).map(([k,c]) => [k, c.before])) : null;
+  return `${radar(view.topics, before)}${topicList(view.topics, changes)}
+    <h3>Recommended for you</h3>${recList(view.recommendations)}`;
+}
+function renderLobby(){
+  $("#problem").innerHTML = `
+    <h1>Pick a problem and start</h1>
+    <p class="note">The judge scores you live as you run code. The helper gives fewer hints on topics you are strong in and more on topics you are still learning.</p>
+    ${skillView ? `<h2>Your skill graph</h2>${skillsHTML(skillView).replace(/<h3>/g,"<h2>").replace(/<\/h3>/g,"</h2>")}
+    <p class="note">Hollow points are topics you haven't practised yet; they start at the level you chose above. Skills are saved in this browser.</p>` : ""}`;
+}
+function showSkills(){
+  if (!skillView) return;
+  $("#report").innerHTML = `<h2 id="reportTitle" style="margin:0 0 4px;font-size:21px">My skills</h2>
+    <p class="note">Out of 100 per topic. Below 40 is beginner, below 70 intermediate, above that advanced. Each judged session moves the topics of that problem.</p>
+    ${skillsHTML(skillView)}
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn" id="closeBtn">Close</button><button class="btn" id="resetBtn">Reset my skills</button></div>`;
+  $("#overlay").classList.add("on");
+  $("#closeBtn").onclick = () => $("#overlay").classList.remove("on");
+  $("#resetBtn").onclick = () => { if (confirm("Reset your skill graph? This clears your saved skills and solved problems.")) { saveProfile({skills:{}, solved:[]}); loadSkills().then(showSkills); } };
+}
+// one handler for every recommendation button, wherever it is rendered
+document.addEventListener("click", e => {
+  const rec = e.target.closest(".rec"); if (!rec) return;
+  $("#problemSel").value = rec.dataset.id;
+  $("#overlay").classList.remove("on");
+  if (live) status("Problem selected. Press New session to switch to it.");
+  else start();
+});
 
 /* ---------- theme ---------- */
 function applyTheme(t){
@@ -255,7 +371,7 @@ function renderProblem(p){
   const ex = p.examples.map(e => `<div class="ex"><span class="k">${esc(p.function_name)}(</span>${esc(e.args.map(a=>short(a,80)).join(", "))}<span class="k">)</span><br><span class="k">→</span> ${esc(short(e.expected))}</div>`).join("");
   $("#problem").innerHTML = `
     <h1>${esc(p.title)}</h1>
-    <div class="meta">${esc(p.difficulty)}, about ${p.expected_minutes} minutes</div>
+    <div class="meta">${LEVEL_TEXT[p.difficulty]}, about ${p.expected_minutes} minutes. ${esc(p.topics.map(topicLabel).join(", "))}</div>
     <div class="statement">${md(p.statement)}</div>
     <h2>Examples</h2>${ex}
     <p class="note">On submit, the judge also runs ${p.hidden_count} hidden edge cases and ${p.stress_count} large inputs with a time limit.</p>`;
@@ -293,6 +409,63 @@ function markError(line){
   monaco.editor.setModelMarkers(model, "judge", [{startLineNumber:line, endLineNumber:line, startColumn:1, endColumn:model.getLineMaxColumn(line), message:"Error here", severity:monaco.MarkerSeverity.Error}]);
 }
 
+/* ---------- step-through (a small Python Tutor) ---------- */
+function requestTrace(testId){
+  if (!problem || !editor) return;
+  status("Stepping through…");
+  send({type:"trace", code: editor.getValue(), test_id: testId || (trace && trace.test_id) || "v1"});
+}
+function clearTraceLine(){ if (editor) traceDeco = editor.deltaDecorations(traceDeco, []); }
+function renderTrace(m){
+  trace = m; trace.i = 0;
+  const box = $("#results");
+  const picker = `<select id="trEx" aria-label="Example to step through">${problem.examples.map(e => `<option value="${esc(e.id)}" ${e.id === m.test_id ? "selected" : ""}>Example ${esc(e.id.slice(1))}: ${esc(e.note)}</option>`).join("")}</select>`;
+  if (m.load_error || m.crashed || !m.steps.length){
+    const why = m.load_error ? `${m.load_error.type}${m.load_error.line ? " on line " + m.load_error.line : ""}: ${m.load_error.message}`
+      : m.crashed || "No lines ran. Check that the function is defined.";
+    box.innerHTML = `<div class="tr-head">${picker}</div><div class="errbox">${esc(why)}</div>`;
+    markError(m.load_error && m.load_error.line); clearTraceLine();
+  } else {
+    const n = m.steps.length;
+    box.innerHTML = `<div class="tr-head">${picker}
+        <button class="btn" id="trPrev" aria-label="Previous step">◀</button>
+        <input type="range" id="trSlider" min="0" max="${n-1}" value="0" aria-label="Step">
+        <button class="btn" id="trNext" aria-label="Next step">▶</button>
+        <span class="tr-pos" id="trPos"></span></div>
+      <div id="trBody"></div>`;
+    $("#trPrev").onclick = () => showStep(trace.i - 1);
+    $("#trNext").onclick = () => showStep(trace.i + 1);
+    $("#trSlider").oninput = e => showStep(+e.target.value);
+    markError(null); showStep(0); $("#trNext").focus();
+  }
+  $("#trEx").onchange = e => requestTrace(e.target.value);
+}
+function showStep(i){
+  const steps = trace.steps, n = steps.length;
+  i = Math.max(0, Math.min(n - 1, i)); trace.i = i;
+  const st = steps[i], prev = steps[i-1], last = i === n - 1;
+  const same = prev && prev.stack.length === st.stack.length;       // only compare within the same call
+  const rows = Object.entries(st.locals).map(([k,v]) =>
+    `<tr class="${same && prev.locals[k] !== v ? "changed" : ""}"><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("");
+  let note = st.event === "return" ? `<b>${esc(st.stack[st.stack.length-1])}</b> returns <code>${esc(st.returned)}</code>.` : `About to run line ${st.line}.`;
+  if (st.stack.length > 1) note += ` Call stack: ${esc(st.stack.join(" → "))}.`;
+  if (last){
+    if (trace.truncated) note += ` Stopped after ${n} steps. If this never ends, check the loop condition.`;
+    else if (trace.status === "pass") note += ` The result matches the expected answer.`;
+    else if (trace.status === "fail") note += ` Expected ${esc(short(trace.expected))}, got ${esc(short(trace.got))}.`;
+    else if (trace.error) note += ` ${esc(trace.error.type)}${trace.error.line ? " on line " + trace.error.line : ""}: ${esc(trace.error.message)}`;
+    else if (trace.status === "timeout") note += ` Ran out of time.`;
+  }
+  const out = (trace.stdout || "").slice(0, st.out);
+  $("#trBody").innerHTML = `<table class="vars">${rows || `<tr><td colspan="2">No variables yet.</td></tr>`}</table>
+    <div class="tr-note">${note}</div>${out ? `<div class="console">${esc(out)}</div>` : ""}`;
+  $("#trSlider").value = i;
+  $("#trPos").textContent = `Step ${i+1} of ${n}, line ${st.line}`;
+  $("#trPrev").disabled = i === 0; $("#trNext").disabled = last;
+  traceDeco = editor.deltaDecorations(traceDeco, [{range: new monaco.Range(st.line,1,st.line,1), options:{isWholeLine:true, className:"tr-line", linesDecorationsClassName:"tr-glyph"}}]);
+  editor.revealLineInCenterIfOutsideViewport(st.line);
+}
+
 /* ---------- helper feed ---------- */
 function ladder(r){ return `<span class="ladder" aria-hidden="true">${[1,2,3,4].map(i=>`<i class="${i<=r?"on":""}" style="height:${4+i*3}px"></i>`).join("")}</span>`; }
 function addHint(h){
@@ -328,6 +501,7 @@ function connect(){
 function send(obj){ if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
 function status(t, err){ const s = $("#status"); s.textContent = t || ""; s.classList.toggle("err", !!err); }
 function setControls(on){ ["#runBtn","#submitBtn","#askBtn","#askText"].forEach(s => $(s).disabled = !on); }
+const topicLabel = id => (skillView && (skillView.topics.find(t => t.id === id) || {}).label) || id;
 function setBusy(on){ $("#runBtn").disabled = $("#submitBtn").disabled = on || !live; }
 
 function onMessage(m){
@@ -337,6 +511,7 @@ function onMessage(m){
       renderProblem(problem); mountEditor(problem.starter_code);
       $("#feed").innerHTML = ""; $("#results").innerHTML = `<div class="empty">Run your code to see results for each example.</div>`;
       resetMeter(); setControls(true); status(""); $("#thinking").classList.remove("on"); markError(null);
+      trace = null; clearTraceLine(); $("#traceBtn").disabled = false;
       $("#startBtn").textContent = "New session";
       $("#clock").hidden = false; clearInterval(clockTimer);
       clockTimer = setInterval(() => { const s = Math.floor((Date.now()-startedAt)/1000); $("#clock").textContent = String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); }, 1000);
@@ -354,9 +529,11 @@ function onMessage(m){
       else status("");
       break;
     case "run_status":
-      status(m.state === "judging" ? "Judging all tests…" : "Running examples…"); break;
+      status(m.state === "judging" ? "Judging all tests and measuring how your code scales…" : m.state === "tracing" ? "Stepping through…" : "Running examples…"); break;
     case "run_result":
-      renderResults(m); status(""); setBusy(false); break;
+      trace = null; clearTraceLine(); renderResults(m); status(""); setBusy(false); break;
+    case "trace_result":
+      status(""); renderTrace(m); break;
     case "live_score":
       setSeg("correctness", m.correctness, 50, true);
       setSeg("process", m.process, 20, true);
@@ -369,7 +546,9 @@ function onMessage(m){
     case "hint":
       $("#thinking").classList.remove("on"); addHint(m); break;
     case "final_report":
-      live = false; setControls(false); clearInterval(clockTimer); showReport(m.report); break;
+      live = false; setControls(false); clearInterval(clockTimer);
+      if (m.report && m.report.profile){ saveProfile(m.report.profile); skillView = m.report.skills; }
+      showReport(m.report); break;
     case "error":
       status(m.message, true); setBusy(false); break;
   }
@@ -385,9 +564,12 @@ function mountEditor(code){
     renderLineHighlight: "line", padding: {top: 12}, tabSize: 4
   });
   editor.onDidChangeModelContent(() => {
+    clearTraceLine();                      // the highlighted step no longer matches the code
     clearTimeout(debounce);
     debounce = setTimeout(() => send({type:"code", code: editor.getValue()}), 1200);
   });
+  // any font that finishes loading later (bold, another script) changes glyph widths: measure again
+  document.fonts.addEventListener("loadingdone", () => monaco.editor.remeasureFonts());
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, run);
   editor.focus();
 }
@@ -403,6 +585,11 @@ function showReport(r){
   const fails = ["hidden","stress"].flatMap(k => r.tiers[k].cases.filter(c => c.status !== "pass").map(c => `<li>${esc(c.note)}: ${esc(c.status === "timeout" ? "too slow" : c.status)}</li>`)).join("");
   const mins = Math.floor(r.time_seconds/60), secs = r.time_seconds%60;
   const hints = r.hints_used.length ? r.hints_used.map(h => RUNG_NAMES[h.rung]).join(", ") : "none";
+  const mc = r.measured_complexity;
+  const growth = mc ? `<h3>How your code scales</h3>
+    <p>Measured: <b>${esc(mc.label)}</b>${mc.exponent != null ? ` (time grows like n<sup>${mc.exponent}</sup>)` : ""}. Target: ${esc(r.optimal_complexity)}. ${mc.matches_optimal ? "That matches the target." : "That is slower than the target, so efficiency loses a third of its points."}</p>
+    <div class="growth">${mc.points.map(p => `<span>n = ${p.n.toLocaleString()}: ${p.ms < 1 ? p.ms.toFixed(3) : p.ms.toFixed(1)} ms</span>`).join("")}${mc.timed_out_at ? `<span>n = ${mc.timed_out_at.toLocaleString()}: timed out</span>` : ""}</div>` : "";
+  const skillsBlock = r.skills ? `<h3>Your skills after this session</h3>${skillsHTML(r.skills, r.skill_changes)}` : "";
   $("#report").innerHTML = `
     <div class="score"><strong id="reportTitle">${r.total}</strong><span>out of 100</span></div>
     <p>${esc(r.summary)}</p>
@@ -413,13 +600,15 @@ function showReport(r){
       <div><h3>Strengths</h3><ul>${(r.strengths||[]).map(s=>`<li>${esc(s)}</li>`).join("") || "<li>None noted</li>"}</ul></div>
       <div><h3>To improve</h3><ul>${(r.improvements||[]).map(s=>`<li>${esc(s)}</li>`).join("") || "<li>None noted</li>"}</ul></div>
     </div>
+    ${growth}
+    ${skillsBlock}
     <h3>Session</h3>
     <p class="note">Complexity: ${esc(r.complexity)} (target ${esc(r.optimal_complexity)}). Time: ${mins}m ${secs}s. Runs: ${r.runs}. Hints: ${esc(hints)}. Helper level: started ${LEVEL_TEXT[r.declared_level]}, ended ${LEVEL_TEXT[r.final_level]}.${r.sandbox_error ? " Sandbox note: " + esc(r.sandbox_error) : ""}</p>
     <div style="display:flex;gap:8px;margin-top:18px"><button class="btn primary" id="againBtn">Start a new session</button><button class="btn" id="closeBtn">Review my code</button></div>`;
   $("#overlay").classList.add("on");
   $("#againBtn").onclick = () => { $("#overlay").classList.remove("on"); start(); };
   $("#closeBtn").onclick = () => $("#overlay").classList.remove("on");
-  $("#againBtn").focus();
+  $("#againBtn").focus({preventScroll:true});
 }
 
 /* ---------- wiring ---------- */
@@ -429,10 +618,13 @@ async function start(){
   status("");
   try { if (!ws || ws.readyState !== 1) await connect(); }
   catch { status("Can't reach the server. Is the backend running?", true); return; }
-  send({type:"start", problem_id: $("#problemSel").value, level: $("#levelSel").value});
+  send({type:"start", problem_id: $("#problemSel").value, level: $("#levelSel").value, profile});
 }
 $("#startBtn").onclick = start;
 $("#runBtn").onclick = run;
+$("#traceBtn").onclick = () => requestTrace();
+$("#skillsBtn").onclick = showSkills;
+$("#levelSel").onchange = loadSkills;
 $("#submitBtn").onclick = () => { if (confirm("Submit for final judging? You won't be able to edit after this.")) { clearTimeout(debounce); setBusy(true); send({type:"submit", code: editor.getValue()}); } };
 $("#askBtn").onclick = () => {
   const msg = $("#askText").value.trim();
@@ -450,10 +642,17 @@ $("#themeBtn").onclick = () => applyTheme(isDark() ? "light" : "dark");
 applyTheme(isDark() ? "dark" : "light");
 buildBar();
 fetch("/api/problems").then(r => r.json()).then(ps => {
-  $("#problemSel").innerHTML = ps.map(p => `<option value="${esc(p.id)}">${esc(p.title)} (${esc(p.difficulty)})</option>`).join("");
+  $("#problemSel").innerHTML = Object.keys(LEVEL_TEXT).map(level =>
+    `<optgroup label="${LEVEL_TEXT[level]}">${ps.filter(p => p.difficulty === level).map(p => `<option value="${esc(p.id)}">${esc(p.title)}</option>`).join("")}</optgroup>`).join("");
 });
+loadSkills();
 require.config({ paths: { vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs" }});
-const monacoLoaded = new Promise(res => require(["vs/editor/editor.main"], res));
+// The code font must be loaded before the editor mounts: Monaco measures character widths once,
+// and measuring the fallback font leaves the cursor drifting away from the text as you type.
+const monacoLoaded = Promise.all([
+  new Promise(res => require(["vs/editor/editor.main"], res)),
+  document.fonts.load('14px "JetBrains Mono"').catch(() => {}),
+]);
 </script>
 </body>
 </html>

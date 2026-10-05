@@ -182,8 +182,10 @@ async def generate(session: Session, problem: Problem, decision: HintDecision,
                          f"{problem.optimal_complexity}. Gently warn that this will be slow on large inputs, without giving the approach."),
     }[decision.trigger]
 
+    topics = ", ".join(f"{t} {round(v * 100)}" for t, v in session.topic_levels.items())
     user = (
         f"Coder level: {band}. Style: {STYLE[band]}\n"
+        f"{('Skill per topic out of 100: ' + topics + '. Explain more where it is low, less where it is high.') if topics else ''}\n"
         f"{RUNG_RULES[decision.rung]}\n\n"
         f"Problem: {problem.title}\n{problem.statement}\n\n"
         f"Current code:\n{numbered(code) or '(empty)'}\n\n"

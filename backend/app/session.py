@@ -57,11 +57,17 @@ class Session:
     submitted: bool = False
     final_report: dict | None = None
     level_history: list[tuple[float, float]] = field(default_factory=list)
+    topic_levels: dict[str, float] = field(default_factory=dict)   # skill per topic of this problem
 
     def __post_init__(self):
         if not self.level_history:
             self.level_value = LEVEL_PRIORS.get(self.declared_level, 0.5)
             self.level_history = [(self.started_at, self.level_value)]
+
+    def start_at(self, level: float) -> None:
+        """Begin from the coder's skill in this problem's topics instead of the declared level."""
+        self.level_value = level
+        self.level_history = [(self.started_at, round(level, 3))]
 
     # ------------------------------------------------------------ derived
     @property

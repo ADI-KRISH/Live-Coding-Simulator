@@ -27,13 +27,14 @@ Engine (one per connection, asyncio.Lock around event handling)
 Client -> server
 | type | payload | effect |
 |---|---|---|
-| start | problem_id, level (beginner/intermediate/advanced) | new Session, sends `session` + `level`, starts idle loop |
+| start | problem_id, level (beginner/intermediate/advanced), profile? | new Session at the coder's skill in the problem's topics, sends `session` + `level`, starts idle loop |
 | code | code | debounced snapshot (client sends 1.2s after last keystroke); updates analysis; counts as activity only if AST structure hash changed |
 | run | code | run visible tests, send results, update skill, maybe proactive hint |
+| trace | code, test_id? | run one visible example under a tracer, send `trace_result`; free, allowed after submit |
 | help | code, message? | explicit hint request (always answered) |
 | submit | code | final judging, session locked |
 
-Server -> client: `session`, `analysis`, `run_status`, `run_result`, `live_score`, `level`,
+Server -> client: `session`, `analysis`, `run_status`, `run_result`, `trace_result`, `live_score`, `level`,
 `helper_status` (thinking/idle/busy), `hint`, `final_report`, `error`.
 
 ## 4. Sandbox
@@ -61,6 +62,10 @@ expected_minutes, 4 fallback hints (one per rung), and three test tiers:
 
 Expected values are computed from the reference at startup. Ship at least: two sum,
 valid brackets, longest substring without repeats, merge intervals.
+
+Each problem also has a `difficulty` (beginner | intermediate | advanced), `topics` (ids from
+`skills.TOPICS`), a `scale(n)` worst-case input generator and `nested_ok` (optimal solution nests
+loops, so loop depth is not flagged). Ship at least 4 problems per level and one per topic.
 
 ## 6. Helper
 ### 6.1 Hint ladder
@@ -96,6 +101,16 @@ passing within half the expected time with no hints; −0.03 per help request; �
 type as previous run; −0.01 same failing signature as previous run; −0.01 syntax-error run.
 Clamp to [0.05, 0.95]. Record history. Send `level` with `changed` so the UI can flag band shifts.
 
+### 7.1 Per-topic skills (skills.py)
+Profile `{skills: {topic: 0..1}, solved: [ids]}` is held by the browser and sent with `start`
+(always cleaned server-side). A session starts at the mean skill of the problem's topics; topics
+never practised use the declared level's prior. On submit, with perf = total/100 and d = the
+problem difficulty's prior: solved (perf >= 0.6) moves each topic 40% of the way up to
+d + 0.25*perf, failed moves it 40% of the way down to d*perf/0.6; never the other direction.
+Recommendations: unsolved first, then smallest gap between difficulty and topic skill, then
+weakest topics. `POST /api/profile {profile, level}` returns skill graph data + recommendations;
+the final report carries `skill_changes`, `profile` and `skills`.
+
 ## 8. Judge
 Weights: correctness 50 (visible+hidden pass ratio), efficiency 15 (stress pass ratio),
 quality 15 (LLM rubric), process 20.
@@ -105,6 +120,10 @@ Live score after each run: projected correctness from visible + current process.
 Quality: LLM returns JSON `{quality 0-15, complexity, strengths[≤3], improvements[≤3], summary}` at
 temperature 0. Fallback heuristic: 12 − loop-depth penalty − long function − short names.
 Stub or syntax-error submissions get quality 0.
+Measured complexity: on submit, time `scale(n)` for n = 500..64000 (doubling, best of 3, 1s limit,
+stop at the first timeout), fit log(time) on log(n), classify the exponent (<0.5 log, <1.5 linear
+or n log n, <2.5 quadratic, else cubic+). If the class is worse than the optimal, efficiency is
+multiplied by 2/3. Reported as `measured_complexity {label, exponent, matches_optimal, points}`.
 Final report: total, breakdown, per-tier pass counts with case notes (never hidden inputs),
 complexity vs optimal, strengths, improvements, hints used, runs, time, declared vs final level.
 
@@ -120,6 +139,11 @@ trigger reason, optional message box + Ask for a hint). Final report modal.
 Ctrl/Cmd+Enter runs. Responsive below 1100px. Reduced motion respected. Visible focus.
 Palette: paper #F3F5F7, panel #FFF, ink #16202B, judge #2B59C3, helper #0B7A6B, alert #B4441B.
 Fonts: Instrument Sans (UI), JetBrains Mono (code only).
+
+Also: problem menu grouped by level; skill graph (radar, rings at 40/70, values listed below) with
+recommended problems in the lobby, behind a Skills button and in the final report (before/after);
+Step through button: example picker, previous/next, slider, variables table with changed rows
+highlighted, current line highlighted in the editor.
 
 ## 10. Deployment
 Dockerfile (python:3.12-slim, non-root `runner` user) and docker-compose with redis,
@@ -138,4 +162,4 @@ Default models: helper `claude-haiku-4-5-20251001`, judge `claude-sonnet-5-5` (e
 All pytest tests pass at every milestone.
 
 ## 12. Out of scope (for now)
-Multiple languages, accounts, session resume after disconnect, multiplayer, learned level model.
+Multiple languages, accounts (the skill profile is browser-local), session resume after disconnect, multiplayer, learned level model.

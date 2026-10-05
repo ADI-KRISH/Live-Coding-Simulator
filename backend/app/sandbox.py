@@ -51,6 +51,48 @@ def _jsonable(v):
 class _TimeLimit(BaseException):
     pass
 
+class _StepLimit(BaseException):
+    pass
+
+# Step-through mode: record one step per executed line of solution.py (like Python Tutor).
+_max_steps = _payload.get("trace") or 0
+_steps = []
+_trace_from = 0
+
+def _show(v):
+    try:
+        s = repr(v)
+    except Exception:
+        s = "<unprintable>"
+    return s if len(s) <= 200 else s[:200] + "..."
+
+def _tracer(frame, event, arg):
+    if frame.f_code.co_filename != "solution.py":
+        return None
+    if event in ("line", "return"):
+        if len(_steps) >= _max_steps:
+            raise _StepLimit()
+        stack, f = [], frame
+        while f is not None and f.f_code.co_filename == "solution.py":
+            stack.append(f.f_code.co_name)
+            f = f.f_back
+        step = {"line": frame.f_lineno, "event": event, "stack": stack[::-1],
+                "locals": {k: _show(v) for k, v in frame.f_locals.items() if not k.startswith("__")},
+                "out": len(_cap.getvalue()) - _trace_from}
+        if event == "return":
+            step["returned"] = _show(arg)
+        _steps.append(step)
+    return _tracer
+
+def _call(args):
+    if _max_steps:
+        sys.settrace(_tracer)
+    try:
+        with contextlib.redirect_stdout(_cap):
+            return _fn(*args)
+    finally:
+        sys.settrace(None)
+
 def _alarm(signum, frame):
     raise _TimeLimit()
 
@@ -80,23 +122,39 @@ if not callable(_fn):
     _emit({"kind": "done", "stdout": _cap.getvalue()[-4000:]})
     sys.exit(0)
 
+# Timing mode: best of 3 calls per test (less noise), and stop at the first timeout.
+_timing = bool(_payload.get("timing"))
+_trace_from = len(_cap.getvalue())
+
 for t in _payload["tests"]:
-    args = copy.deepcopy(t["args"])
+    best = None
     start = time.perf_counter()
     try:
-        signal.setitimer(signal.ITIMER_REAL, t["time_limit"])
-        with contextlib.redirect_stdout(_cap):
-            got = _fn(*args)
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        _emit({"kind": "test", "id": t["id"], "status": "ok", "got": _jsonable(got),
-               "time_ms": round((time.perf_counter() - start) * 1000, 2)})
+        for _ in range(3 if _timing else 1):
+            args = copy.deepcopy(t["args"])
+            start = time.perf_counter()
+            signal.setitimer(signal.ITIMER_REAL, t["time_limit"])
+            got = _call(args)
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            took = time.perf_counter() - start
+            best = took if best is None else min(best, took)
+        _emit({"kind": "test", "id": t["id"], "status": "ok", "got": None if _timing else _jsonable(got),
+               "time_ms": round(best * 1000, 4)})
     except _TimeLimit:
         _emit({"kind": "test", "id": t["id"], "status": "timeout",
                "time_ms": round(t["time_limit"] * 1000)})
+        if _timing:
+            break
+    except _StepLimit:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        _emit({"kind": "test", "id": t["id"], "status": "stopped", "time_ms": 0})
     except BaseException as e:
         signal.setitimer(signal.ITIMER_REAL, 0)
         _emit({"kind": "test", "id": t["id"], "status": "error", "error": _err(e),
-               "time_ms": round((time.perf_counter() - start) * 1000, 2)})
+               "time_ms": round((time.perf_counter() - start) * 1000, 4)})
+
+if _max_steps:
+    _emit({"kind": "trace", "steps": _steps, "stdout": _cap.getvalue()[_trace_from:][:4000]})
 
 _emit({"kind": "done", "stdout": _cap.getvalue()[-4000:]})
 '''
@@ -107,7 +165,7 @@ MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 @dataclass
 class RawTestResult:
     id: str
-    status: str                # ok | error | timeout | not_run
+    status: str                # ok | error | timeout | not_run | stopped (step limit while tracing)
     got: object = None
     error: dict | None = None
     time_ms: float = 0.0
@@ -119,14 +177,17 @@ class ExecutionResult:
     tests: dict[str, RawTestResult] = field(default_factory=dict)
     stdout: str = ""
     crashed: str | None = None          # sandbox-level failure (killed, OOM, infra)
+    trace: dict | None = None           # {steps, stdout} when run with trace > 0
 
 
-def _payload(code: str, function: str, tests: list) -> tuple[str, str]:
+def _payload(code: str, function: str, tests: list, timing: bool = False, trace: int = 0) -> tuple[str, str]:
     nonce = "@@" + secrets.token_hex(12) + "@@"
     data = {
         "nonce": nonce,
         "code": code,
         "function": function,
+        "timing": timing,
+        "trace": trace,
         "tests": [{"id": t.id, "args": t.args, "time_limit": t.time_limit} for t in tests],
     }
     return nonce, json.dumps(data, ensure_ascii=False)
@@ -149,6 +210,8 @@ def _parse(stdout: str, nonce: str, tests: list) -> ExecutionResult:
             res.tests[obj["id"]] = RawTestResult(
                 id=obj["id"], status=obj["status"], got=obj.get("got"),
                 error=obj.get("error"), time_ms=obj.get("time_ms", 0.0))
+        elif kind == "trace":
+            res.trace = {"steps": obj.get("steps", []), "stdout": obj.get("stdout", "")}
         elif kind == "done":
             saw_done = True
             res.stdout = obj.get("stdout", "")
@@ -173,9 +236,13 @@ def _limits():
     os.setsid()
 
 
-async def _run_local(code: str, function: str, tests: list) -> ExecutionResult:
-    nonce, stdin = _payload(code, function, tests)
-    budget = min(config.SANDBOX_MAX_SECONDS, sum(t.time_limit for t in tests) + 3.0)
+def _budget(tests: list, timing: bool) -> float:
+    return min(config.SANDBOX_MAX_SECONDS, sum(t.time_limit for t in tests) * (3 if timing else 1) + 3.0)
+
+
+async def _run_local(code: str, function: str, tests: list, timing: bool, trace: int) -> ExecutionResult:
+    nonce, stdin = _payload(code, function, tests, timing, trace)
+    budget = _budget(tests, timing)
     buf = bytearray()
     timed_out = False
     with tempfile.TemporaryDirectory(prefix="lcs-") as tmp:
@@ -223,9 +290,9 @@ async def _run_local(code: str, function: str, tests: list) -> ExecutionResult:
 
 # --------------------------------------------------------------------------- judge0
 
-async def _run_judge0(code: str, function: str, tests: list) -> ExecutionResult:
-    nonce, stdin = _payload(code, function, tests)
-    wall = min(config.SANDBOX_MAX_SECONDS, sum(t.time_limit for t in tests) + 3.0)
+async def _run_judge0(code: str, function: str, tests: list, timing: bool, trace: int) -> ExecutionResult:
+    nonce, stdin = _payload(code, function, tests, timing, trace)
+    wall = _budget(tests, timing)
     body = {
         "source_code": HARNESS,
         "language_id": config.JUDGE0_PYTHON_ID,
@@ -253,7 +320,8 @@ async def _run_judge0(code: str, function: str, tests: list) -> ExecutionResult:
     return res
 
 
-async def execute(code: str, function: str, tests: list) -> ExecutionResult:
+async def execute(code: str, function: str, tests: list, timing: bool = False, trace: int = 0) -> ExecutionResult:
+    """timing: best-of-3 per test, stop at the first timeout. trace: record up to that many steps."""
     if config.SANDBOX == "judge0":
-        return await _run_judge0(code, function, tests)
-    return await _run_local(code, function, tests)
+        return await _run_judge0(code, function, tests, timing, trace)
+    return await _run_local(code, function, tests, timing, trace)

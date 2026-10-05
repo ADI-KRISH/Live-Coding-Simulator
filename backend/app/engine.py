@@ -1,14 +1,16 @@
 """Per-connection session engine.
 
 Client -> server events
-  start   {problem_id, level}
+  start   {problem_id, level, profile?}   profile = per-topic skills kept by the browser
   code    {code}                debounced snapshot while typing
   run     {code}                run visible examples
+  trace   {code, test_id?}      step through one visible example line by line
   help    {code, message?}      explicit hint request
   submit  {code}                final judging
 
 Server -> client events
-  session, analysis, run_result, live_score, level, hint, helper_status, final_report, error
+  session, analysis, run_result, trace_result, live_score, level, hint, helper_status,
+  final_report, error
 """
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ import time
 
 from fastapi import WebSocket
 
-from . import config, helper
+from . import config, helper, skills
 from .analysis import CodeAnalysis, analyze
 from .judge import GradedTest, final_report, grade, live_score
 from .problems import Problem, get_problem
@@ -27,6 +29,7 @@ from .session import HintRecord, RunRecord, Session, band_for, store
 
 log = logging.getLogger("lcs.engine")
 MAX_CODE = 20000
+TRACE_STEPS = 400     # step-through stops recording after this many executed lines
 
 
 class Engine:
@@ -36,6 +39,7 @@ class Engine:
         self.problem: Problem | None = None
         self.analysis: CodeAnalysis | None = None
         self.last_visible: list[GradedTest] | None = None
+        self.profile: dict = skills.clean(None)
         self.lock = asyncio.Lock()
         self.idle_task: asyncio.Task | None = None
         self.hint_task: asyncio.Task | None = None
@@ -71,6 +75,8 @@ class Engine:
                 await self._send_analysis()
             elif kind == "run":
                 await self._run(msg.get("code", self.session.code))
+            elif kind == "trace":
+                await self._trace(msg.get("code", self.session.code), msg.get("test_id"))
             elif kind == "help":
                 self._update_code(msg.get("code", self.session.code))
                 await self._help(str(msg.get("message", ""))[:500])
@@ -86,13 +92,15 @@ class Engine:
         if not problem:
             await self.send("error", message="Unknown problem.")
             return
-        level = msg.get("level", "intermediate")
-        if level not in ("beginner", "intermediate", "advanced"):
-            level = "intermediate"
+        level = skills.clean_level(msg.get("level"))
         self.close()
         self.closed = False
         self.problem = problem
+        self.profile = skills.clean(msg.get("profile"))
         self.session = Session(problem_id=problem.id, declared_level=level, code=problem.starter_code)
+        # hints follow the coder's skill in this problem's topics, not just the declared level
+        self.session.topic_levels = {t: skills.topic_skill(self.profile, t, level) for t in problem.topics}
+        self.session.start_at(skills.start_level(self.profile, problem, level))
         self.last_visible = None
         self.analysis = analyze(self.session.code, problem.function_name)
         self.session.last_structure = self.analysis.structure_hash
@@ -180,9 +188,29 @@ class Engine:
             await self._maybe_hint("error_streak")
         elif rec.failing:
             await self._maybe_hint("fail_streak")
-        elif a.max_loop_depth >= 2 and p.optimal_complexity in ("O(n)", "O(n log n)"):
+        elif a.max_loop_depth >= 2 and not p.nested_ok and p.optimal_complexity in ("O(n)", "O(n log n)"):
             await self._maybe_hint("inefficiency")
 
+    async def _trace(self, code: str, test_id) -> None:
+        """Step-through: run one visible example under a tracer. Free; it never affects the score."""
+        s, p = self.session, self.problem
+        code = (code if isinstance(code, str) else "")[:MAX_CODE]
+        if not s.submitted:
+            s.last_activity = time.time()
+        test = next((t for t in p.visible if t.id == test_id), p.visible[0])
+        syntax = analyze(code, p.function_name).syntax_error
+        if syntax:
+            await self.send("trace_result", test_id=test.id, steps=[], load_error=syntax)
+            return
+        await self.send("run_status", state="tracing")
+        ex = await execute(code, p.function_name, [test], trace=TRACE_STEPS)
+        g = grade(p, [test], ex)[0]
+        raw = ex.tests.get(test.id)
+        trace = ex.trace or {"steps": [], "stdout": ""}
+        await self.send("trace_result", test_id=test.id, args=test.args, expected=test.expected, got=g.got,
+                        status=g.status, error=g.error, load_error=ex.load_error, crashed=ex.crashed,
+                        steps=trace["steps"], stdout=trace["stdout"],
+                        truncated=bool(raw and raw.status == "stopped"))
     async def _help(self, message: str) -> None:
         if self.session.submitted:
             return
@@ -198,6 +226,10 @@ class Engine:
         self._update_code(code)
         await self.send("run_status", state="judging")
         report = await final_report(s, p, s.code)
+        # the judged score moves the coder's skill in this problem's topics
+        report["skill_changes"] = skills.update(self.profile, p, report["total"], s.declared_level)
+        report["profile"] = self.profile
+        report["skills"] = skills.view(self.profile, s.declared_level)
         s.submitted = True
         s.final_report = report
         self.close()

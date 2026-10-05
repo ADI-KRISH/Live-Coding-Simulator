@@ -4,10 +4,10 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 
-from . import config
+from . import config, skills
 from .engine import Engine
 from .llm import llm
 from .problems import PROBLEMS
@@ -24,7 +24,7 @@ app = FastAPI(title="Live coding simulator")
 
 @app.get("/")
 async def index():
-    return FileResponse(FRONTEND)
+    return FileResponse(FRONTEND, headers={"Cache-Control": "no-cache"})   # never serve a stale UI
 
 
 @app.get("/api/health")
@@ -36,6 +36,12 @@ async def health():
 @app.get("/api/problems")
 async def problems():
     return [p.summary() for p in PROBLEMS.values()]
+
+
+@app.post("/api/profile")
+async def profile(body: dict = Body(...)):
+    """Skill graph data and recommended problems for a browser-held skill profile."""
+    return skills.view(skills.clean(body.get("profile")), skills.clean_level(body.get("level")))
 
 
 @app.get("/api/sessions/{session_id}")
